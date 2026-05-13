@@ -1,0 +1,16 @@
+views:
+  - type: table
+    name: Tabla
+    filters:
+      and:
+        - file.inFolder("PERSONAL_OS/00_INBOX/Notas libres Learn Obsidian")
+    order:
+      - file.name
+      - file.backlinks
+      - fecha
+      - tipo
+  - type: cards
+    name: Tarjetas
+    filters:
+      and:
+        - file.inFolder("PERSONAL_OS/00_INBOX/Notas libres Learn Obsidian")

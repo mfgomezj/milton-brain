@@ -1,0 +1,226 @@
+{
+  "name": "Frankie - Telegram to PERSONAL_OS Inbox",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "frankie/personal-os/capture",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "1",
+      "name": "Telegram Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        220,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json || {};\nconst telegram = body.message || body.edited_message || {};\nconst text = (telegram.text || body.text || '').trim();\nconst chatId = telegram.chat?.id || body.chat_id || null;\nconst userId = telegram.from?.id || body.user_id || null;\nconst username = telegram.from?.username || body.username || '';\nconst intent = body.intent || 'capture_note';\nconst projectKey = body.project_key || 'personal_os';\nconst now = new Date();\nconst iso = now.toISOString();\nconst ymd = iso.slice(0, 10);\nconst hhmmss = iso.slice(11, 19).replace(/:/g, '-');\nreturn [{\n  json: {\n    project_key: projectKey,\n    intent,\n    source_channel: 'telegram',\n    chat_id: chatId,\n    user_id: userId,\n    username,\n    text,\n    captured_at: iso,\n    note_date: ymd,\n    note_time: hhmmss\n  }\n}];"
+      },
+      "id": "2",
+      "name": "Normalize Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        460,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const allowedIntents = new Set(['agenda', 'reminder', 'study_plan', 'capture_note', 'task', 'weekly_review']);\nconst row = $input.first().json;\nconst errors = [];\nif (!row.project_key) errors.push('Missing project_key');\nif (row.project_key !== 'personal_os') errors.push('Invalid project_key for PERSONAL_OS workflow');\nif (!allowedIntents.has(row.intent)) errors.push('Intent not allowed for personal_os');\nif (!row.text) errors.push('Empty text payload');\nconst targetPath = 'PERSONAL_OS/00_INBOX';\nif (!targetPath.startsWith('PERSONAL_OS/')) errors.push('Invalid target path');\nconst isValid = errors.length === 0;\nreturn [{ json: { ...row, is_valid: isValid, errors, target_path: targetPath } }];"
+      },
+      "id": "3",
+      "name": "Enforce Context",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        700,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "ok-1",
+              "leftValue": "={{ $json.is_valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "4",
+      "name": "IF Valid",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.2,
+      "position": [
+        920,
+        320
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = $input.first().json;\nconst safeUser = row.username ? row.username.replace(/[^a-zA-Z0-9_-]/g, '_') : 'unknown';\nconst fileName = `${row.note_date}_${row.note_time}_${safeUser}.md`;\nconst note = `# Captura rápida\\n\\n- project_key: ${row.project_key}\\n- intent: ${row.intent}\\n- source_channel: ${row.source_channel}\\n- user_id: ${row.user_id ?? ''}\\n- username: ${row.username || ''}\\n- captured_at: ${row.captured_at}\\n\\n## Contenido\\n${row.text}\\n`;\nconst data = Buffer.from(note, 'utf8').toString('base64');\nreturn [{\n  json: {\n    ...row,\n    file_name: fileName,\n    file_path: `${row.target_path}/${fileName}`\n  },\n  binary: {\n    data: {\n      data,\n      fileName,\n      mimeType: 'text/markdown'\n    }\n  }\n}];"
+      },
+      "id": "5",
+      "name": "Build Markdown File",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1140,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "fileName": "={{ $json.file_path }}",
+        "dataPropertyName": "data"
+      },
+      "id": "6",
+      "name": "Write Inbox File",
+      "type": "n8n-nodes-base.writeBinaryFile",
+      "typeVersion": 1,
+      "position": [
+        1360,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: true, project_key: $json.project_key, intent: $json.intent, file_path: $json.file_path, captured_at: $json.captured_at } }}",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "7",
+      "name": "Respond Success",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1580,
+        240
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { ok: false, error: 'validation_failed', errors: $json.errors, project_key: $json.project_key ?? null, intent: $json.intent ?? null } }}",
+        "options": {
+          "responseCode": 400
+        }
+      },
+      "id": "8",
+      "name": "Respond Rejected",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1140,
+        420
+      ]
+    }
+  ],
+  "connections": {
+    "Telegram Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Input": {
+      "main": [
+        [
+          {
+            "node": "Enforce Context",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enforce Context": {
+      "main": [
+        [
+          {
+            "node": "IF Valid",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IF Valid": {
+      "main": [
+        [
+          {
+            "node": "Build Markdown File",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond Rejected",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Markdown File": {
+      "main": [
+        [
+          {
+            "node": "Write Inbox File",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Write Inbox File": {
+      "main": [
+        [
+          {
+            "node": "Respond Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1",
+  "meta": {
+    "templateCredsSetupCompleted": true
+  },
+  "id": "frankie-personal-os-telegram-inbox-capture"
+}
