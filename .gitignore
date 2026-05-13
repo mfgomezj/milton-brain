@@ -1,0 +1,14 @@
+# .gitignore — milton-brain
+
+# Variables de entorno
+.env
+**/.env
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Backups y temporales
+*.tmp
+*.bak
